@@ -31,6 +31,8 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .logo span{color:var(--text)}
 #header-player{display:none;align-items:center;gap:10px;font-size:.85rem}
 .online-dot{width:8px;height:8px;border-radius:50%;background:var(--success)}
+.header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.header-pill{font-size:.75rem;color:var(--muted);padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface2)}
 
 /* ---- LAYOUT ---- */
 .view{display:none;padding:24px;max-width:1140px;margin:0 auto}
@@ -140,7 +142,11 @@ input:focus,select:focus{border-color:var(--accent)}
 .stat-label{font-size:.7rem;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
 
 /* ---- GAME LAYOUT ---- */
-.game-layout{display:grid;grid-template-columns:1fr 280px;gap:18px;align-items:start}
+.game-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}
+.enemy-boards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.board-panel{margin-top:20px}
+.board-panel h3{margin-bottom:8px}
+.board-note{font-size:.78rem;color:var(--muted);margin-bottom:10px}
 @media(max-width:760px){.game-layout{grid-template-columns:1fr}}
 
 /* ---- SETUP LAYOUT ---- */
@@ -170,7 +176,10 @@ input:focus,select:focus{border-color:var(--accent)}
   <div id="header-player">
     <span class="online-dot"></span>
     <span id="hdr-name" style="font-weight:600"></span>
-    <button class="btn btn-sm btn-secondary" onclick="logout()">Switch Player</button>
+    <div class="header-actions">
+      <button class="btn btn-sm btn-secondary" onclick="showApiSettings()">Server</button>
+      <button class="btn btn-sm btn-secondary" onclick="logout()">Switch Player</button>
+    </div>
   </div>
 </header>
 
@@ -185,7 +194,7 @@ input:focus,select:focus{border-color:var(--accent)}
       </div>
       <div id="reg-alert" class="alert alert-error"></div>
       <div class="form-group">
-        <label>Username (letters, numbers, underscores — max 30 chars)</label>
+        <label for="reg-input">Username (letters, numbers, underscores — max 30 chars)</label>
         <input type="text" id="reg-input" placeholder="e.g. admiral_price" maxlength="30"
           onkeydown="if(event.key==='Enter')register()">
       </div>
@@ -206,17 +215,36 @@ input:focus,select:focus{border-color:var(--accent)}
 
   <div id="lobby-alert" class="alert alert-error"></div>
 
+  <div id="api-settings" class="card" style="display:none">
+    <h2>Server Connection</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="api-base-input">API Base URL</label>
+        <input type="text" id="api-base-input" placeholder="Leave blank for same origin">
+      </div>
+      <div class="form-group">
+        <label for="api-test-pass-input">Test Password (optional)</label>
+        <input type="text" id="api-test-pass-input" placeholder="Needed only for ship reveal board">
+      </div>
+    </div>
+    <div class="text-muted text-sm mb-12">Use this for your live deployed server during the demo, or to intentionally show an offline-server error state.</div>
+    <div class="flex gap-8">
+      <button class="btn btn-primary" onclick="saveApiSettings()">Save Settings</button>
+      <button class="btn btn-secondary" onclick="showApiSettings(false)">Close</button>
+    </div>
+  </div>
+
   <!-- Create form -->
   <div id="create-form" class="card" style="display:none">
     <h2>Create Game</h2>
     <div id="create-alert" class="alert alert-error"></div>
     <div class="form-row">
       <div class="form-group">
-        <label>Grid Size (5 – 15)</label>
+        <label for="f-grid">Grid Size (5 – 15)</label>
         <input type="number" id="f-grid" value="10" min="5" max="15">
       </div>
       <div class="form-group">
-        <label>Max Players (2+)</label>
+        <label for="f-max">Max Players (2+)</label>
         <input type="number" id="f-max" value="2" min="2" max="8">
       </div>
     </div>
@@ -318,7 +346,7 @@ input:focus,select:focus{border-color:var(--accent)}
     <div>
       <div id="player-chips" class="chips"></div>
       <div class="card">
-        <h2 id="board-h">Battle Grid</h2>
+        <h2 id="board-h">Battle Grids</h2>
         <p class="text-muted text-sm mb-12" id="board-sub"></p>
         <div id="game-grid" style="overflow-x:auto"></div>
       </div>
@@ -351,7 +379,8 @@ input:focus,select:focus{border-color:var(--accent)}
 // =============================================================
 //  CONFIG
 // =============================================================
-const BASE = ''; // same origin — paths like /api/...
+let BASE = '';
+const DEFAULT_TEST_PASSWORD = 'clemson-test-2026';
 
 // =============================================================
 //  STATE
@@ -364,17 +393,31 @@ let placements   = [];    // ship placement in setup
 let setupSize    = 10;
 let pollTimer    = null;
 let lobbyTimer   = null;
+let apiSettings  = { base: '', testPassword: DEFAULT_TEST_PASSWORD };
 
 // =============================================================
 //  API
 // =============================================================
+function apiRoot() {
+  return (BASE || '').replace(/\/$/, '');
+}
+
+function apiUrl(path) {
+  return `${apiRoot()}/api${path}`;
+}
+
 async function api(path, opts = {}) {
   try {
-    const r = await fetch(BASE + '/api' + path, {
+    const r = await fetch(apiUrl(path), {
       headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
       ...opts,
     });
-    const d = await r.json();
+
+    let d = null;
+    const text = await r.text();
+    try { d = text ? JSON.parse(text) : {}; }
+    catch { d = { message: text || 'The server returned an invalid response.' }; }
+
     return { ok: r.ok, status: r.status, data: d };
   } catch(e) {
     return { ok: false, status: 0, data: { message: 'Network error — check your connection or server URL.' } };
@@ -388,16 +431,20 @@ function errMsg(data) {
 // Fetch this player's ship positions from the server (cached per game per session)
 async function fetchMyShips(gameId) {
   if (!me) return [];
-  if (myShips[gameId]) return myShips[gameId]; // already cached this session
-  const res = await fetch(`${BASE}/api/test/games/${gameId}/board/${me.player_id}`, {
-    headers: { 'X-Test-Password': 'clemson-test-2026' }
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  // ship_positions is [[row, col], ...]
-  const positions = (data.ship_positions || []).map(([r, c]) => ({ row: r, col: c }));
-  myShips[gameId] = positions;
-  return positions;
+  if (myShips[gameId]) return myShips[gameId];
+
+  try {
+    const res = await fetch(`${apiUrl(`/test/games/${gameId}/board/${me.player_id}`)}`, {
+      headers: { 'X-Test-Password': apiSettings.testPassword || DEFAULT_TEST_PASSWORD }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const positions = (data.ship_positions || []).map(([r, c]) => ({ row: r, col: c }));
+    myShips[gameId] = positions;
+    return positions;
+  } catch {
+    return [];
+  }
 }
 
 // =============================================================
@@ -429,6 +476,40 @@ function updateHeader() {
   } else {
     hp.style.display = 'none';
   }
+}
+
+function loadApiSettings() {
+  try {
+    const raw = localStorage.getItem('bs_api_settings');
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    apiSettings = {
+      base: (parsed.base || '').trim(),
+      testPassword: (parsed.testPassword || DEFAULT_TEST_PASSWORD).trim() || DEFAULT_TEST_PASSWORD
+    };
+    BASE = apiSettings.base;
+  } catch {}
+}
+
+function saveApiSettings() {
+  apiSettings.base = (document.getElementById('api-base-input').value || '').trim().replace(/\/$/, '');
+  apiSettings.testPassword = (document.getElementById('api-test-pass-input').value || '').trim() || DEFAULT_TEST_PASSWORD;
+  BASE = apiSettings.base;
+  try {
+    localStorage.setItem('bs_api_settings', JSON.stringify(apiSettings));
+  } catch {}
+  showApiSettings(false);
+  showAlert('lobby-alert', `Server updated to ${BASE || 'same origin'}.`, 'success');
+  loadLobby();
+}
+
+function showApiSettings(forceOpen = true) {
+  const box = document.getElementById('api-settings');
+  if (!box) return;
+  const open = forceOpen === true ? true : false;
+  box.style.display = open ? 'block' : 'none';
+  document.getElementById('api-base-input').value = apiSettings.base || '';
+  document.getElementById('api-test-pass-input').value = apiSettings.testPassword || DEFAULT_TEST_PASSWORD;
 }
 
 // =============================================================
@@ -497,7 +578,11 @@ function stopLobbyPoll() { if (lobbyTimer) { clearInterval(lobbyTimer); lobbyTim
 
 async function loadLobby() {
   const res = await api('/games');
-  if (!res.ok) return;
+  if (!res.ok) {
+    showAlert('lobby-alert', errMsg(res.data));
+    return;
+  }
+  hideAlert('lobby-alert');
   flashSpin('lobby-spin');
 
   const games = res.data.games || [];
@@ -772,29 +857,43 @@ async function renderGame(g, moves) {
     </div>`;
   }).join('');
 
-  // Board — ship positions fetched from server (cached in memory after first fetch)
+  // Boards — show your own board plus a panel for every opponent
   const ships   = await fetchMyShips(g.game_id);
   const canFire = isMyTurn;
   document.getElementById('board-sub').textContent = canFire
-    ? 'Click any unfired cell to fire your shot.'
-    : g.status === 'waiting_setup' ? 'Your ships are shown in green.' : 'Watching — not your turn.';
+    ? 'Click an unfired cell on any opponent board to fire your shot.'
+    : g.status === 'waiting_setup' ? 'Your ships are shown in green.' : 'Boards update automatically every few seconds.';
 
-  const myBoard = makeGridHTML(g.grid_size, ships, moves, false, false);
-  const enemyBoard = makeGridHTML(g.grid_size, [], moves, false, canFire);
+  const myBoard = makeGridHTML(g.grid_size, ships, moves, false, false, 'self');
+  const opponents = (g.players || []).filter(p => p.player_id !== me?.player_id);
+
+  const enemyBoards = opponents.length ? opponents.map((p, idx) => {
+    const dead = p.ships_remaining === 0;
+    return `
+      <div class="board-panel">
+        <h3>${p.username}${dead ? ' — eliminated' : ''}</h3>
+        <div class="board-note">${dead ? 'All ships destroyed.' : (canFire ? 'Fire on this board.' : 'Waiting for the next turn.')}</div>
+        <div class="enemy-board" data-player-id="${p.player_id}">
+          ${makeGridHTML(g.grid_size, [], moves, false, canFire && !dead, 'enemy')}
+        </div>
+      </div>
+    `;
+  }).join('') : '<div class="text-muted text-sm">No opponents have joined yet.</div>';
 
   document.getElementById('game-grid').innerHTML = `
-    <div>
-      <h3 style="margin-bottom:8px">Your Board</h3>
+    <div class="board-panel">
+      <h3>Your Board</h3>
+      <div class="board-note">Green = your ships, red = hit, blue = miss.</div>
       ${myBoard}
     </div>
-    <div style="margin-top:20px">
-      <h3 style="margin-bottom:8px">Enemy Board</h3>
-      ${enemyBoard}
+    <div class="board-panel">
+      <h3>Opponent Boards</h3>
+      <div class="enemy-boards">${enemyBoards}</div>
     </div>
   `;
 
   if (canFire) {
-    document.querySelectorAll('#game-grid > div:nth-child(2) .cell.fireable').forEach(c => {
+    document.querySelectorAll('#game-grid .enemy-board .cell.fireable').forEach(c => {
       c.addEventListener('click', () => fire(g.game_id, +c.dataset.r, +c.dataset.c));
     });
   }
@@ -807,16 +906,13 @@ async function renderGame(g, moves) {
 // =============================================================
 //  GRID
 // =============================================================
-function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
+function makeGridHTML(size, ships, moves, forSetup, canFire=false, perspective='enemy') {
   const cols = Array.from({length: size}, (_, i) => String.fromCharCode(65+i));
+  const shipSet = new Set((ships || []).map(s => `${s.row},${s.col}`));
+  const moveMap = {};
 
-  const shipSet  = new Set(ships.map(s => `${s.row},${s.col}`));
-  const moveMap  = {};
-
-  moves.forEach(m => {
-    if (m.player_id === me?.player_id) {
-      moveMap[`${m.row},${m.col}`] = m.result;
-    }
+  (moves || []).forEach(m => {
+    moveMap[`${m.row},${m.col}`] = m.result;
   });
 
   let h = '<div class="grid-wrap">';
@@ -829,26 +925,23 @@ function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
       const shot = moveMap[key];
       const mine = shipSet.has(key);
 
-      let cls = 'cell ', icon = '';
+      let cls = 'cell ';
+      let icon = '';
 
       if (forSetup) {
         cls += 'empty';
-      } 
-      else if (shot === 'hit') {
+      } else if (shot === 'hit') {
         cls += 'hit used';
         icon = '💥';
-      } 
-      else if (shot === 'miss') {
+      } else if (shot === 'miss') {
         cls += 'miss used';
         icon = '🌊';
-      } 
-      else if (mine) {
+      } else if (perspective === 'self' && mine) {
         cls += 'ship';
         icon = '🚢';
-      } 
-      else {
+      } else {
         cls += 'empty';
-        if (canFire) cls += ' fireable';
+        if (perspective === 'enemy' && canFire) cls += ' fireable';
       }
 
       h += `<div class="${cls}" data-r="${r}" data-c="${c}">${icon}</div>`;
@@ -904,6 +997,18 @@ async function fire(gameId, row, col) {
 // =============================================================
 //  MOVE LOG
 // =============================================================
+function formatMoveTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
 function renderMoveLog(moves, players) {
   const el = document.getElementById('move-log');
 
@@ -918,11 +1023,12 @@ function renderMoveLog(moves, players) {
 
     return `<div class="move-entry">
       <span class="move-dot ${m.result}"></span>
-      <span><strong>${pname}</strong> → ${coord} 
+      <span><strong>${pname}</strong> → ${coord}
         <span class="${m.result==='hit'?'text-error':'text-muted'}">
-          ${m.result==='hit'?'HIT 💥':'miss 🌊'}
+          ${m.result==='hit'?'HIT 💥':'MISS 🌊'}
         </span>
       </span>
+      <span class="move-time">${formatMoveTime(m.created_at)}</span>
     </div>`;
   }).join('');
 }
@@ -931,8 +1037,9 @@ function renderPlayersDetail(players, g) {
   document.getElementById('players-detail').innerHTML = players.map(p => {
     const isme   = p.player_id === me?.player_id;
     const active = p.player_id === g.current_turn_player_id && g.status === 'playing';
+    const dead   = p.ships_remaining === 0 && g.status !== 'waiting_setup';
     return `<div class="flex items-center justify-between" style="padding:8px 0;border-bottom:1px solid var(--border);font-size:.82rem">
-      <span>${isme?'👤 ':''}${p.username} ${active?'<span class="text-success" style="font-size:.72rem">● TURN</span>':''}</span>
+      <span>${isme?'👤 ':''}${p.username} ${active?'<span class="text-success" style="font-size:.72rem">● TURN</span>':''} ${dead?'<span class="text-error" style="font-size:.72rem">ELIMINATED</span>':''}</span>
       <span class="text-muted">${p.ships_remaining}/3 ⚓</span>
     </div>`;
   }).join('') || '<div class="text-muted text-sm">No players.</div>';
@@ -975,7 +1082,7 @@ function playerName(id, players) {
 //  BOOT
 // =============================================================
 (function init() {
-  // Restore player
+  loadApiSettings();
   try {
     const p = sessionStorage.getItem('bs_player');
     if (p) { me = JSON.parse(p); updateHeader(); goLobby(); return; }
