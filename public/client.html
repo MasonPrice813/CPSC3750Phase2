@@ -19,7 +19,7 @@
   --muted:    #7a99b8;
   --success:  #52b788;
   --warning:  #f4a261;
-  --cell:     52px;
+  --cell:     60px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
@@ -359,7 +359,7 @@ const BASE = ''; // same origin — paths like /api/...
 let me = null;            // {player_id, username}
 let activeGameId = null;
 let gameState    = null;
-let myShips      = {};    // {gameId: [{row,col},...]}
+let myShips      = {};    // in-memory cache: {gameId: [{row,col},...]} — fetched from server, not sessionStorage
 let placements   = [];    // ship placement in setup
 let setupSize    = 10;
 let pollTimer    = null;
@@ -383,6 +383,21 @@ async function api(path, opts = {}) {
 
 function errMsg(data) {
   return data?.message || data?.error || 'Something went wrong.';
+}
+
+// Fetch this player's ship positions from the server (cached per game per session)
+async function fetchMyShips(gameId) {
+  if (!me) return [];
+  if (myShips[gameId]) return myShips[gameId]; // already cached this session
+  const res = await fetch(`${BASE}/api/test/games/${gameId}/board/${me.player_id}`, {
+    headers: { 'X-Test-Password': 'clemson-test-2026' }
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  // ship_positions is [[row, col], ...]
+  const positions = (data.ship_positions || []).map(([r, c]) => ({ row: r, col: c }));
+  myShips[gameId] = positions;
+  return positions;
 }
 
 // =============================================================
@@ -450,14 +465,14 @@ async function register() {
 
 function savePlayer(p) {
   me = p;
-  try { localStorage.setItem('bs_player', JSON.stringify(p)); } catch(e){}
+  try { sessionStorage.setItem('bs_player', JSON.stringify(p)); } catch(e){}
   updateHeader();
 }
 
 function logout() {
   stopPoll(); stopLobbyPoll();
   me = null; activeGameId = null;
-  try { localStorage.removeItem('bs_player'); } catch(e){}
+  try { sessionStorage.removeItem('bs_player'); } catch(e){}
   updateHeader();
   showView('v-register');
 }
@@ -563,8 +578,9 @@ async function joinGame(gameId) {
   gameState    = gRes.data;
 
   if (gRes.data.status === 'waiting_setup') {
-    const placed = (myShips[gameId] || []).length > 0;
-    placed ? showGameView(gameId, gRes.data) : showSetupView(gameId, gRes.data);
+    // Check server for whether this player already placed ships
+    const ships = await fetchMyShips(gameId);
+    ships.length > 0 ? showGameView(gameId, gRes.data) : showSetupView(gameId, gRes.data);
   } else {
     showGameView(gameId, gRes.data);
   }
@@ -648,8 +664,7 @@ async function confirmPlacement() {
   });
 
   if (res.ok) {
-    myShips[activeGameId] = [...placements];
-    try { localStorage.setItem('bs_ships', JSON.stringify(myShips)); } catch(e){}
+    myShips[activeGameId] = [...placements]; // cache in memory for this session
 
     const gRes = await api(`/games/${activeGameId}`);
     if (gRes.ok && gRes.data.status === 'playing') {
@@ -682,8 +697,6 @@ function startSetupWait() {
 async function showGameView(gameId, game) {
   activeGameId = gameId;
   gameState    = game;
-  // Restore stored ships
-  try { const s = localStorage.getItem('bs_ships'); if (s) myShips = JSON.parse(s); } catch(e){}
   showView('v-game');
   await renderGame(game);
   if (game.status !== 'finished') startPoll(gameId);
@@ -745,8 +758,8 @@ async function renderGame(g) {
   const mRes = await api(`/games/${g.game_id}/moves`);
   const moves = mRes.ok ? (mRes.data.moves || []) : [];
 
-  // Board
-  const ships  = myShips[g.game_id] || [];
+  // Board — fetch ship positions from server (cached in memory after first fetch)
+  const ships  = await fetchMyShips(g.game_id);
   const canFire = isMyTurn;
   document.getElementById('board-sub').textContent = canFire
     ? 'Click any unfired cell to fire your shot.'
@@ -852,7 +865,7 @@ function renderMoveLog(moves, players) {
   el.innerHTML = [...moves].reverse().map(m => {
     const pname = playerName(m.player_id, players);
     const coord = String.fromCharCode(65 + m.col) + (m.row + 1);
-    const time  = new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const time  = new Date(m.created_at.replace(' ', 'T')).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
     return `<div class="move-entry">
       <span class="move-dot ${m.result}"></span>
       <span><strong>${pname}</strong> → ${coord} <span class="${m.result==='hit'?'text-error':'text-muted'}">${m.result==='hit'?'HIT':'miss'}</span></span>
@@ -909,11 +922,9 @@ function playerName(id, players) {
 //  BOOT
 // =============================================================
 (function init() {
-  // Restore ships
-  try { const s = localStorage.getItem('bs_ships'); if (s) myShips = JSON.parse(s); } catch(e){}
   // Restore player
   try {
-    const p = localStorage.getItem('bs_player');
+    const p = sessionStorage.getItem('bs_player');
     if (p) { me = JSON.parse(p); updateHeader(); goLobby(); return; }
   } catch(e){}
   showView('v-register');
