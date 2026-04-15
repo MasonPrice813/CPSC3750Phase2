@@ -709,10 +709,13 @@ async function showGameView(gameId, game) {
   activeGameId = gameId;
   gameState    = game;
   showView('v-game');
-  // Fetch moves alongside the game data we already have
-  const mRes = await api(`/games/${gameId}/moves`);
-  const moves = mRes.ok ? (mRes.data.moves || []) : [];
-  await renderGame(game, moves);
+
+  const { game: freshGame, moves } = await fetchGameAndMoves(gameId);
+  if (freshGame) {
+    gameState = freshGame;
+    await renderGame(freshGame, moves);
+  }
+
   if (game.status !== 'finished') startPoll(gameId);
 }
 
@@ -807,11 +810,10 @@ async function renderGame(g, moves) {
 function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
   const cols = Array.from({length: size}, (_, i) => String.fromCharCode(65+i));
 
-  // build lookup maps
   const shipSet  = new Set(ships.map(s => `${s.row},${s.col}`));
   const moveMap  = {};
+
   moves.forEach(m => {
-    // only show YOUR hits on enemy board
     if (m.player_id === me?.player_id) {
       moveMap[`${m.row},${m.col}`] = m.result;
     }
@@ -828,15 +830,23 @@ function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
       const mine = shipSet.has(key);
 
       let cls = 'cell ', icon = '';
+
       if (forSetup) {
         cls += 'empty';
-      } else if (shot === 'hit') {
-        cls += 'hit'; icon = '💥';
-      } else if (shot === 'miss') {
-        cls += 'miss'; icon = ''; // ✕ rendered via CSS ::before
-      } else if (mine) {
-        cls += 'ship'; icon = '🚢';
-      } else {
+      } 
+      else if (shot === 'hit') {
+        cls += 'hit used';
+        icon = '💥';
+      } 
+      else if (shot === 'miss') {
+        cls += 'miss used';
+        icon = '🌊';
+      } 
+      else if (mine) {
+        cls += 'ship';
+        icon = '🚢';
+      } 
+      else {
         cls += 'empty';
         if (canFire) cls += ' fireable';
       }
@@ -855,48 +865,64 @@ function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
 async function fire(gameId, row, col) {
   hideAlert('game-alert');
 
+  // instant click feedback
+  const clickedCell = document.querySelector(`#game-grid .cell[data-r="${row}"][data-c="${col}"]`);
+  if (clickedCell) {
+    clickedCell.classList.add('selected');
+  }
+
   const res = await api(`/games/${gameId}/fire`, {
     method: 'POST',
     body: JSON.stringify({ player_id: me.player_id, row, col })
   });
 
   if (res.ok) {
-    // Fetch updated game + moves together, then rebuild the grid with correct state
     const { game, moves } = await fetchGameAndMoves(gameId);
     if (game) {
       gameState = game;
       await renderGame(game, moves);
-      // Pop animation on the cell that was just fired
+
       const cell = document.querySelector(`#game-grid .cell[data-r="${row}"][data-c="${col}"]`);
       if (cell) cell.classList.add('pop');
     }
   } else {
     const msg = errMsg(res.data).toLowerCase();
     let friendly = errMsg(res.data);
-    if (msg.includes('not your turn') || msg.includes('forbidden')) friendly = "It's not your turn yet — wait for the other player.";
-    else if (msg.includes('already targeted') || msg.includes('already fired'))  friendly = "You've already fired at that cell. Pick a different one.";
-    else if (msg.includes('out of bounds'))   friendly = 'That cell is outside the grid.';
-    else if (msg.includes('not in this game')) friendly = "You're not a player in this game.";
-    else if (msg.includes('not in playing'))   friendly = 'The game is not in a playing state yet.';
+
+    if (msg.includes('not your turn') || msg.includes('forbidden'))
+      friendly = "It's not your turn yet.";
+    else if (msg.includes('already'))
+      friendly = "You already fired there.";
+    else if (msg.includes('out of bounds'))
+      friendly = "That shot is outside the grid.";
+
     showAlert('game-alert', friendly);
-    setTimeout(() => hideAlert('game-alert'), 5000);
   }
 }
+
 
 // =============================================================
 //  MOVE LOG
 // =============================================================
 function renderMoveLog(moves, players) {
   const el = document.getElementById('move-log');
-  if (!moves.length) { el.innerHTML = '<div class="text-muted text-sm">No moves yet.</div>'; return; }
+
+  if (!moves || moves.length === 0) {
+    el.innerHTML = '<div class="text-muted text-sm">No moves yet.</div>';
+    return;
+  }
+
   el.innerHTML = [...moves].reverse().map(m => {
     const pname = playerName(m.player_id, players);
     const coord = String.fromCharCode(65 + m.col) + (m.row + 1);
-    const time  = new Date(m.created_at.replace(' ', 'T')).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
     return `<div class="move-entry">
       <span class="move-dot ${m.result}"></span>
-      <span><strong>${pname}</strong> → ${coord} <span class="${m.result==='hit'?'text-error':'text-muted'}">${m.result==='hit'?'HIT':'miss'}</span></span>
-      <span class="move-time">${time}</span>
+      <span><strong>${pname}</strong> → ${coord} 
+        <span class="${m.result==='hit'?'text-error':'text-muted'}">
+          ${m.result==='hit'?'HIT 💥':'miss 🌊'}
+        </span>
+      </span>
     </div>`;
   }).join('');
 }
