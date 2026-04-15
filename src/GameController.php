@@ -525,33 +525,38 @@ class GameController
     }
 
     public function getMoves(int $gameId): void
-    {
-        if ($gameId <= 0) {
-            Response::error(404, 'not_found', 'Game not found.');
-        }
-
-        $game = $this->getGameRow($gameId);
-        if (!$game) {
-            Response::error(404, 'not_found', 'Game not found.');
-        }
-
-        $stmt = $this->pdo->prepare('SELECT move_id, player_id, row_idx, col_idx, result, created_at FROM moves WHERE game_id = :game_id ORDER BY created_at ASC, move_id ASC');
-        $stmt->execute([':game_id' => $gameId]);
-
-        $moves = [];
-        foreach ($stmt->fetchAll() as $row) {
-            $moves[] = [
-                'move_id' => (int)$row['move_id'],
-                'player_id' => (int)$row['player_id'],
-                'row' => (int)$row['row_idx'],
-                'col' => (int)$row['col_idx'],
-                'result' => $row['result'],
-                'created_at' => $row['created_at'],
-            ];
-        }
-
-        Response::json(200, ['moves' => $moves]);
+{
+    if ($gameId <= 0) {
+        Response::error(404, 'not_found', 'Game not found.');
     }
+
+    $game = $this->getGameRow($gameId);
+    if (!$game) {
+        Response::error(404, 'not_found', 'Game not found.');
+    }
+
+    $stmt = $this->pdo->prepare(
+        'SELECT player_id, row_idx, col_idx, result, created_at 
+         FROM moves 
+         WHERE game_id = :game_id 
+         ORDER BY created_at ASC'
+    );
+
+    $stmt->execute([':game_id' => $gameId]);
+
+    $moves = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $moves[] = [
+            'player_id' => (int)$row['player_id'],
+            'row' => (int)$row['row_idx'],
+            'col' => (int)$row['col_idx'],
+            'result' => $row['result'],
+            'created_at' => $row['created_at'],
+        ];
+    }
+
+    Response::json(200, ['moves' => $moves]);
+}
 
     private function getPlayerRow(int $playerId): ?array
     {
