@@ -280,9 +280,9 @@ input:focus,select:focus{border-color:var(--accent)}
       <div class="card">
         <h2>How to Play</h2>
         <ul style="font-size:.82rem;color:var(--muted);line-height:1.7;padding-left:16px">
-          <li>All players share one ocean grid</li>
-          <li>Fire at any cell on your turn</li>
-          <li>Hit a ship = opponent loses a ship</li>
+          <li>Each player has their own hidden board</li>
+          <li>On your turn, fire at opponents' boards</li>
+          <li>Hits damage enemy ships, misses reveal water</li>
           <li>Last player with ships remaining wins</li>
         </ul>
       </div>
@@ -753,7 +753,7 @@ async function renderGame(g, moves) {
   } else if (g.status === 'waiting_setup') {
     tb.className = 'turn-banner waiting'; document.getElementById('turn-text').textContent = 'Waiting for all players to place ships…';
   } else if (isMyTurn) {
-    tb.className = 'turn-banner my-turn'; document.getElementById('turn-text').textContent = '🎯 Your turn — click a cell to fire!';
+    tb.className = 'turn-banner my-turn'; document.getElementById('turn-text').textContent = '🎯 Your turn — fire on the enemy board!';
   } else {
     const tname = playerName(g.current_turn_player_id, g.players);
     tb.className = 'turn-banner waiting'; document.getElementById('turn-text').textContent = `Waiting for ${tname} to fire…`;
@@ -776,10 +776,22 @@ async function renderGame(g, moves) {
     ? 'Click any unfired cell to fire your shot.'
     : g.status === 'waiting_setup' ? 'Your ships are shown in green.' : 'Watching — not your turn.';
 
-  document.getElementById('game-grid').innerHTML = makeGridHTML(g.grid_size, ships, moves, false, canFire);
+  const myBoard = makeGridHTML(g.grid_size, ships, moves, false, false);
+  const enemyBoard = makeGridHTML(g.grid_size, [], moves, false, canFire);
+
+  document.getElementById('game-grid').innerHTML = `
+    <div>
+      <h3 style="margin-bottom:8px">Your Board</h3>
+      ${myBoard}
+    </div>
+    <div style="margin-top:20px">
+      <h3 style="margin-bottom:8px">Enemy Board</h3>
+      ${enemyBoard}
+    </div>
+  `;
 
   if (canFire) {
-    document.querySelectorAll('#game-grid .cell.fireable').forEach(c => {
+    document.querySelectorAll('#game-grid > div:nth-child(2) .cell.fireable').forEach(c => {
       c.addEventListener('click', () => fire(g.game_id, +c.dataset.r, +c.dataset.c));
     });
   }
@@ -798,7 +810,12 @@ function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
   // build lookup maps
   const shipSet  = new Set(ships.map(s => `${s.row},${s.col}`));
   const moveMap  = {};
-  moves.forEach(m => { moveMap[`${m.row},${m.col}`] = m.result; });
+  moves.forEach(m => {
+    // only show YOUR hits on enemy board
+    if (m.player_id === me?.player_id) {
+      moveMap[`${m.row},${m.col}`] = m.result;
+    }
+  });
 
   let h = '<div class="grid-wrap">';
   h += '<div class="col-labels">' + cols.map(c => `<div class="col-label">${c}</div>`).join('') + '</div>';
