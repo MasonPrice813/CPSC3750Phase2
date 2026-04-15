@@ -19,7 +19,7 @@
   --muted:    #7a99b8;
   --success:  #52b788;
   --warning:  #f4a261;
-  --cell:     40px;
+  --cell:     52px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
@@ -93,8 +93,9 @@ input:focus,select:focus{border-color:var(--accent)}
 }
 .cell.empty{background:var(--surface2)}
 .cell.ship{background:var(--ship);border-color:#40916c}
-.cell.hit{background:var(--hit);border-color:#c9184a}
-.cell.miss{background:rgba(74,111,165,.35);border-color:#3a5a80}
+.cell.hit{background:#c9184a;border-color:#ff0038;box-shadow:0 0 8px rgba(239,35,60,.5)}
+.cell.miss{background:#1a2a3a;border-color:#3a5a80;cursor:not-allowed}
+.cell.miss::before{content:'✕';font-size:1.1rem;font-weight:700;color:#3a5a80;line-height:1}
 .cell.selected{background:rgba(0,180,216,.55);border-color:var(--accent)}
 .cell.fireable{cursor:crosshair}
 .cell.fireable:hover{background:rgba(239,35,60,.25);border-color:var(--hit);transform:scale(1.08)}
@@ -791,7 +792,7 @@ function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
       } else if (shot === 'hit') {
         cls += 'hit'; icon = '💥';
       } else if (shot === 'miss') {
-        cls += 'miss'; icon = '•';
+        cls += 'miss'; icon = ''; // ✕ rendered via CSS ::before
       } else if (mine) {
         cls += 'ship'; icon = '🚢';
       } else {
@@ -824,7 +825,7 @@ async function fire(gameId, row, col) {
     const cell = document.querySelector(`#game-grid .cell[data-r="${row}"][data-c="${col}"]`);
     if (cell) {
       cell.className = `cell ${result} pop`;
-      cell.textContent = result === 'hit' ? '💥' : '•';
+      cell.textContent = result === 'hit' ? '💥' : ''; // miss ✕ via CSS ::before
     }
     // Refresh game
     const gRes = await api(`/games/${gameId}`);
