@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Battleship</title>
+<style>
+:root {
+  --bg:       #07111f;
+  --surface:  #0d1f33;
+  --surface2: #152b47;
+  --border:   #1e3a5f;
+  --accent:   #00b4d8;
+  --accent2:  #0096c7;
+  --hit:      #ef233c;
+  --miss:     #4a6fa5;
+  --ship:     #2d6a4f;
+  --text:     #e8f4f8;
+  --muted:    #7a99b8;
+  --success:  #52b788;
+  --warning:  #f4a261;
+  --cell:     40px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+
+/* ---- HEADER ---- */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-size:1.3rem;font-weight:800;letter-spacing:3px;color:var(--accent)}
+.logo span{color:var(--text)}
+#header-player{display:none;align-items:center;gap:10px;font-size:.85rem}
+.online-dot{width:8px;height:8px;border-radius:50%;background:var(--success)}
+
+/* ---- LAYOUT ---- */
+.view{display:none;padding:24px;max-width:1140px;margin:0 auto}
+.view.active{display:block}
+
+/* ---- CARDS ---- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:18px}
+.card h2{font-size:1rem;color:var(--accent);margin-bottom:14px;text-transform:uppercase;letter-spacing:1px}
+
+/* ---- FORMS ---- */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-group{margin-bottom:14px}
+label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=number],select{
+  width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:10px 14px;color:var(--text);font-size:.9rem;
+  outline:none;transition:border-color .2s
+}
+input:focus,select:focus{border-color:var(--accent)}
+
+/* ---- BUTTONS ---- */
+.btn{border:none;border-radius:8px;padding:10px 20px;font-size:.88rem;font-weight:600;cursor:pointer;transition:opacity .15s,transform .1s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{opacity:.85;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.btn-primary{background:var(--accent);color:#07111f}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-success{background:var(--success);color:#07111f}
+.btn-danger{background:var(--hit);color:#fff}
+.btn-sm{padding:6px 13px;font-size:.78rem}
+
+/* ---- ALERTS ---- */
+.alert{border-radius:8px;padding:11px 16px;margin-bottom:14px;font-size:.88rem;display:none}
+.alert.show{display:block}
+.alert-error{background:rgba(239,35,60,.12);border:1px solid rgba(239,35,60,.4);color:#ff6b7a}
+.alert-success{background:rgba(82,183,136,.12);border:1px solid rgba(82,183,136,.4);color:var(--success)}
+.alert-info{background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.4);color:var(--accent)}
+
+/* ---- GAME LIST ---- */
+.game-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px 18px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s;gap:12px}
+.game-card:hover{border-color:var(--accent)}
+.game-info .title{font-weight:600;font-size:.95rem}
+.game-info .meta{font-size:.78rem;color:var(--muted);margin-top:3px}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700}
+.badge-waiting{background:rgba(244,162,97,.18);color:var(--warning)}
+.badge-playing{background:rgba(82,183,136,.18);color:var(--success)}
+.badge-finished{background:rgba(122,153,184,.15);color:var(--muted)}
+.games-stack{display:flex;flex-direction:column;gap:10px}
+
+/* ---- GRID ---- */
+.grid-wrap{display:inline-block;user-select:none}
+.col-labels{display:flex;margin-left:calc(var(--cell) + 4px);margin-bottom:2px}
+.col-label{width:var(--cell);text-align:center;font-size:.68rem;color:var(--muted)}
+.grid-row{display:flex;align-items:center;margin-bottom:3px}
+.row-label{width:var(--cell);text-align:right;font-size:.68rem;color:var(--muted);padding-right:6px;flex-shrink:0}
+.cell{
+  width:var(--cell);height:var(--cell);border:1px solid var(--border);border-radius:4px;
+  margin-right:3px;transition:background .15s,transform .1s;
+  display:flex;align-items:center;justify-content:center;font-size:1rem;position:relative
+}
+.cell.empty{background:var(--surface2)}
+.cell.ship{background:var(--ship);border-color:#40916c}
+.cell.hit{background:var(--hit);border-color:#c9184a}
+.cell.miss{background:rgba(74,111,165,.35);border-color:#3a5a80}
+.cell.selected{background:rgba(0,180,216,.55);border-color:var(--accent)}
+.cell.fireable{cursor:crosshair}
+.cell.fireable:hover{background:rgba(239,35,60,.25);border-color:var(--hit);transform:scale(1.08)}
+.cell.used{cursor:not-allowed;opacity:.7}
+@keyframes hitPop{0%{transform:scale(1)}45%{transform:scale(1.25)}100%{transform:scale(1)}}
+.cell.pop{animation:hitPop .35s ease-out}
+
+/* ---- TURN BANNER ---- */
+.turn-banner{border-radius:10px;padding:13px 18px;margin-bottom:18px;display:flex;align-items:center;gap:10px;border:1px solid var(--border);background:var(--surface2)}
+.turn-banner.my-turn{background:rgba(82,183,136,.1);border-color:var(--success)}
+.turn-banner.waiting{background:rgba(0,180,216,.08);border-color:rgba(0,180,216,.3)}
+.turn-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--muted)}
+.turn-banner.my-turn .turn-dot{background:var(--success)}
+.turn-banner.waiting .turn-dot{background:var(--accent)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.turn-banner.my-turn .turn-dot{animation:pulse 1.4s infinite}
+
+/* ---- WINNER ---- */
+.winner-card{background:linear-gradient(135deg,rgba(82,183,136,.2),rgba(64,145,108,.08));border:2px solid var(--success);border-radius:14px;padding:28px;text-align:center;margin-bottom:20px}
+.winner-card h2{font-size:1.9rem;color:var(--success);margin-bottom:6px}
+
+/* ---- PLAYER CHIPS ---- */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.chip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 13px;font-size:.82rem;display:flex;align-items:center;gap:6px}
+.chip.active{border-color:var(--success);background:rgba(82,183,136,.08)}
+.chip.dead{opacity:.35;text-decoration:line-through}
+.chip-ships{font-size:.72rem;color:var(--muted)}
+
+/* ---- MOVE LOG ---- */
+.move-log{max-height:260px;overflow-y:auto}
+.move-entry{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--border);font-size:.82rem}
+.move-entry:last-child{border-bottom:none}
+.move-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.move-dot.hit{background:var(--hit)}
+.move-dot.miss{background:var(--miss)}
+.move-time{color:var(--muted);font-size:.73rem;margin-left:auto;white-space:nowrap}
+
+/* ---- STATS ---- */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px}
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.stat-num{font-size:1.8rem;font-weight:700}
+.stat-label{font-size:.7rem;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
+
+/* ---- GAME LAYOUT ---- */
+.game-layout{display:grid;grid-template-columns:1fr 280px;gap:18px;align-items:start}
+@media(max-width:760px){.game-layout{grid-template-columns:1fr}}
+
+/* ---- SETUP LAYOUT ---- */
+.setup-layout{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:start}
+@media(max-width:700px){.setup-layout{grid-template-columns:1fr}}
+
+/* ---- MISC ---- */
+.flex{display:flex}.gap-8{gap:8px}.gap-12{gap:12px}.items-center{align-items:center}.justify-between{justify-content:space-between}.flex-wrap{flex-wrap:wrap}
+.mb-4{margin-bottom:4px}.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}
+.text-muted{color:var(--muted)}.text-sm{font-size:.82rem}.text-success{color:var(--success)}.text-error{color:var(--hit)}.text-warning{color:var(--warning)}
+.sep{width:100%;height:1px;background:var(--border);margin:14px 0}
+.refresh-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--success);vertical-align:middle;margin-left:6px}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* Ship placement dots */
+.placement-dots{display:flex;gap:6px;margin-bottom:12px}
+.pdot{width:18px;height:18px;border-radius:5px;background:var(--border);border:2px solid var(--border);transition:all .2s}
+.pdot.placed{background:var(--ship);border-color:#40916c}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚓ <span>BATTLE</span>SHIP</div>
+  <div id="header-player">
+    <span class="online-dot"></span>
+    <span id="hdr-name" style="font-weight:600"></span>
+    <button class="btn btn-sm btn-secondary" onclick="logout()">Switch Player</button>
+  </div>
+</header>
+
+<!-- ==================== REGISTER VIEW ==================== -->
+<div id="v-register" class="view active">
+  <div style="max-width:420px;margin:72px auto">
+    <div class="card">
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:3rem;margin-bottom:8px">⚓</div>
+        <h1 style="font-size:1.5rem;margin-bottom:6px">Welcome to Battleship</h1>
+        <p class="text-muted text-sm">Enter a username to start playing. Your identity will be saved in this browser.</p>
+      </div>
+      <div id="reg-alert" class="alert alert-error"></div>
+      <div class="form-group">
+        <label>Username (letters, numbers, underscores — max 30 chars)</label>
+        <input type="text" id="reg-input" placeholder="e.g. admiral_price" maxlength="30"
+          onkeydown="if(event.key==='Enter')register()">
+      </div>
+      <button class="btn btn-primary" onclick="register()" style="width:100%;justify-content:center">Set Sail →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== LOBBY VIEW ==================== -->
+<div id="v-lobby" class="view">
+  <div class="flex items-center justify-between flex-wrap gap-8 mb-16">
+    <h1 style="font-size:1.4rem">Game Lobby</h1>
+    <div class="flex gap-8">
+      <button class="btn btn-secondary" onclick="showStats()">My Stats</button>
+      <button class="btn btn-primary" onclick="toggleCreateForm()">+ New Game</button>
+    </div>
+  </div>
+
+  <div id="lobby-alert" class="alert alert-error"></div>
+
+  <!-- Create form -->
+  <div id="create-form" class="card" style="display:none">
+    <h2>Create Game</h2>
+    <div id="create-alert" class="alert alert-error"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Grid Size (5 – 15)</label>
+        <input type="number" id="f-grid" value="10" min="5" max="15">
+      </div>
+      <div class="form-group">
+        <label>Max Players (2+)</label>
+        <input type="number" id="f-max" value="2" min="2" max="8">
+      </div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-primary" onclick="createGame()">Create &amp; Join</button>
+      <button class="btn btn-secondary" onclick="toggleCreateForm()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Open games -->
+  <div class="card">
+    <div class="flex items-center gap-8 mb-16">
+      <h2 style="margin:0">Open Games</h2>
+      <span id="lobby-spin"></span>
+    </div>
+    <div id="open-games" class="games-stack">
+      <div class="text-muted text-sm">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Active / finished -->
+  <div class="card">
+    <h2>Active &amp; Finished Games</h2>
+    <div id="other-games" class="games-stack">
+      <div class="text-muted text-sm">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SETUP VIEW ==================== -->
+<div id="v-setup" class="view">
+  <div class="flex items-center gap-8 mb-16">
+    <button class="btn btn-sm btn-secondary" onclick="goLobby()">← Lobby</button>
+    <h1 style="font-size:1.25rem">Place Your Ships — Game #<span id="setup-gid"></span></h1>
+  </div>
+
+  <div id="setup-alert" class="alert alert-error"></div>
+
+  <div class="setup-layout">
+    <!-- Grid side -->
+    <div>
+      <div class="alert alert-info show mb-12">Click 3 cells on the grid to place your ships. Click again to remove.</div>
+      <div class="placement-dots" id="pdots">
+        <div class="pdot" id="pd0"></div>
+        <div class="pdot" id="pd1"></div>
+        <div class="pdot" id="pd2"></div>
+        <span class="text-muted text-sm" style="margin-left:4px" id="pd-label">0 / 3 placed</span>
+      </div>
+      <div id="setup-grid"></div>
+      <div style="margin-top:14px">
+        <button id="confirm-btn" class="btn btn-success" onclick="confirmPlacement()" disabled>Confirm Placement</button>
+      </div>
+    </div>
+
+    <!-- Info side -->
+    <div>
+      <div class="card">
+        <h2>Game Info</h2>
+        <div id="setup-info" class="text-muted text-sm">Loading…</div>
+      </div>
+      <div class="card">
+        <h2>How to Play</h2>
+        <ul style="font-size:.82rem;color:var(--muted);line-height:1.7;padding-left:16px">
+          <li>All players share one ocean grid</li>
+          <li>Fire at any cell on your turn</li>
+          <li>Hit a ship = opponent loses a ship</li>
+          <li>Last player with ships remaining wins</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== GAME VIEW ==================== -->
+<div id="v-game" class="view">
+  <div class="flex items-center gap-8 mb-16 flex-wrap">
+    <button class="btn btn-sm btn-secondary" onclick="goLobby()">← Lobby</button>
+    <h1 style="font-size:1.25rem" id="game-title">Game #?</h1>
+    <span id="game-spin"></span>
+  </div>
+
+  <!-- Winner -->
+  <div id="winner-card" class="winner-card" style="display:none">
+    <h2 id="winner-h"></h2>
+    <p id="winner-sub" class="text-muted"></p>
+    <button class="btn btn-primary" style="margin-top:14px" onclick="goLobby()">Back to Lobby</button>
+  </div>
+
+  <!-- Turn -->
+  <div id="turn-banner" class="turn-banner">
+    <div class="turn-dot"></div>
+    <div id="turn-text">Loading…</div>
+  </div>
+
+  <div id="game-alert" class="alert alert-error"></div>
+
+  <div class="game-layout">
+    <!-- Left: board -->
+    <div>
+      <div id="player-chips" class="chips"></div>
+      <div class="card">
+        <h2 id="board-h">Battle Grid</h2>
+        <p class="text-muted text-sm mb-12" id="board-sub"></p>
+        <div id="game-grid" style="overflow-x:auto"></div>
+      </div>
+    </div>
+
+    <!-- Right: sidebar -->
+    <div>
+      <div class="card">
+        <h2>Move History</h2>
+        <div id="move-log" class="move-log"><div class="text-muted text-sm">No moves yet.</div></div>
+      </div>
+      <div class="card">
+        <h2>Players</h2>
+        <div id="players-detail"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== STATS VIEW ==================== -->
+<div id="v-stats" class="view">
+  <div class="flex items-center gap-8 mb-16">
+    <button class="btn btn-sm btn-secondary" onclick="goLobby()">← Lobby</button>
+    <h1 style="font-size:1.25rem">My Stats</h1>
+  </div>
+  <div id="stats-body" class="card"><div class="text-muted">Loading…</div></div>
+</div>
+
+<script>
+// =============================================================
+//  CONFIG
+// =============================================================
+const BASE = ''; // same origin — paths like /api/...
+
+// =============================================================
+//  STATE
+// =============================================================
+let me = null;            // {player_id, username}
+let activeGameId = null;
+let gameState    = null;
+let myShips      = {};    // {gameId: [{row,col},...]}
+let placements   = [];    // ship placement in setup
+let setupSize    = 10;
+let pollTimer    = null;
+let lobbyTimer   = null;
+
+// =============================================================
+//  API
+// =============================================================
+async function api(path, opts = {}) {
+  try {
+    const r = await fetch(BASE + '/api' + path, {
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+      ...opts,
+    });
+    const d = await r.json();
+    return { ok: r.ok, status: r.status, data: d };
+  } catch(e) {
+    return { ok: false, status: 0, data: { message: 'Network error — check your connection or server URL.' } };
+  }
+}
+
+function errMsg(data) {
+  return data?.message || data?.error || 'Something went wrong.';
+}
+
+// =============================================================
+//  VIEWS
+// =============================================================
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showAlert(id, msg, type='error') {
+  const el = document.getElementById(id);
+  el.className = `alert alert-${type} show`;
+  el.textContent = msg;
+}
+function hideAlert(id) { document.getElementById(id).classList.remove('show'); }
+
+function flashSpin(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = '<span class="refresh-dot"></span>';
+  setTimeout(() => { if (el) el.innerHTML = ''; }, 600);
+}
+
+function updateHeader() {
+  const hp = document.getElementById('header-player');
+  if (me) {
+    hp.style.display = 'flex';
+    document.getElementById('hdr-name').textContent = me.username;
+  } else {
+    hp.style.display = 'none';
+  }
+}
+
+// =============================================================
+//  REGISTER
+// =============================================================
+async function register() {
+  const raw = document.getElementById('reg-input').value.trim();
+  hideAlert('reg-alert');
+
+  if (!raw) { showAlert('reg-alert', 'Username is required.'); return; }
+  if (raw.length > 30) { showAlert('reg-alert', 'Username may not exceed 30 characters.'); return; }
+  if (!/^[A-Za-z0-9_]+$/.test(raw)) {
+    showAlert('reg-alert', 'Username may only contain letters, numbers, and underscores.');
+    return;
+  }
+
+  const res = await api('/players', { method: 'POST', body: JSON.stringify({ username: raw }) });
+
+  if (res.ok) {
+    savePlayer({ player_id: res.data.player_id, username: res.data.username });
+    goLobby();
+  } else if (res.status === 409) {
+    // Username taken — recover the id if the server sent it back
+    if (res.data?.player_id) {
+      savePlayer({ player_id: res.data.player_id, username: raw });
+      goLobby();
+    } else {
+      showAlert('reg-alert', 'That username is already taken. Try a different one.');
+    }
+  } else {
+    showAlert('reg-alert', errMsg(res.data));
+  }
+}
+
+function savePlayer(p) {
+  me = p;
+  try { localStorage.setItem('bs_player', JSON.stringify(p)); } catch(e){}
+  updateHeader();
+}
+
+function logout() {
+  stopPoll(); stopLobbyPoll();
+  me = null; activeGameId = null;
+  try { localStorage.removeItem('bs_player'); } catch(e){}
+  updateHeader();
+  showView('v-register');
+}
+
+// =============================================================
+//  LOBBY
+// =============================================================
+function goLobby() {
+  stopPoll();
+  activeGameId = null;
+  gameState = null;
+  showView('v-lobby');
+  loadLobby();
+  startLobbyPoll();
+}
+
+function startLobbyPoll() {
+  stopLobbyPoll();
+  lobbyTimer = setInterval(loadLobby, 3000);
+}
+function stopLobbyPoll() { if (lobbyTimer) { clearInterval(lobbyTimer); lobbyTimer = null; } }
+
+async function loadLobby() {
+  const res = await api('/games');
+  if (!res.ok) return;
+  flashSpin('lobby-spin');
+
+  const games = res.data.games || [];
+  const open  = games.filter(g => g.status === 'waiting_setup');
+  const other = games.filter(g => g.status !== 'waiting_setup');
+
+  document.getElementById('open-games').innerHTML  = open.length  ? open.map(renderGameCard).join('')  : '<div class="text-muted text-sm">No open games — create one!</div>';
+  document.getElementById('other-games').innerHTML = other.length ? other.map(renderGameCard).join('') : '<div class="text-muted text-sm">None yet.</div>';
+}
+
+function renderGameCard(g) {
+  const labels = { waiting_setup: 'Open', playing: 'In Progress', finished: 'Finished' };
+  const bclass = { waiting_setup: 'badge-waiting', playing: 'badge-playing', finished: 'badge-finished' };
+  const actions = [];
+  if (g.status === 'waiting_setup') actions.push(`<button class="btn btn-primary btn-sm" onclick="joinGame(${g.game_id})">Join</button>`);
+  if (g.status === 'playing')       actions.push(`<button class="btn btn-secondary btn-sm" onclick="viewGame(${g.game_id})">Watch</button>`);
+  if (g.status === 'finished')      actions.push(`<button class="btn btn-secondary btn-sm" onclick="viewGame(${g.game_id})">View</button>`);
+
+  return `<div class="game-card">
+    <div class="game-info">
+      <div class="title">Game #${g.game_id}</div>
+      <div class="meta">Grid: ${g.grid_size}×${g.grid_size} &nbsp;·&nbsp; Max players: ${g.max_players}</div>
+    </div>
+    <div class="flex items-center gap-8">
+      <span class="badge ${bclass[g.status]}">${labels[g.status] || g.status}</span>
+      ${actions.join('')}
+    </div>
+  </div>`;
+}
+
+function toggleCreateForm() {
+  const f = document.getElementById('create-form');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  hideAlert('create-alert');
+}
+
+async function createGame() {
+  if (!me) return;
+  hideAlert('create-alert');
+  const gs = parseInt(document.getElementById('f-grid').value);
+  const mp = parseInt(document.getElementById('f-max').value);
+  if (isNaN(gs) || gs < 5 || gs > 15) { showAlert('create-alert', 'Grid size must be between 5 and 15.'); return; }
+  if (isNaN(mp) || mp < 2)            { showAlert('create-alert', 'Max players must be at least 2.'); return; }
+
+  const res = await api('/games', {
+    method: 'POST',
+    body: JSON.stringify({ creator_id: me.player_id, grid_size: gs, max_players: mp })
+  });
+  if (res.ok) { document.getElementById('create-form').style.display = 'none'; joinGame(res.data.game_id); }
+  else showAlert('create-alert', errMsg(res.data));
+}
+
+async function joinGame(gameId) {
+  if (!me) return;
+  hideAlert('lobby-alert');
+
+  const joinRes = await api(`/games/${gameId}/join`, {
+    method: 'POST',
+    body: JSON.stringify({ player_id: me.player_id })
+  });
+
+  // 400 "already joined" or "already started" → that's fine, proceed
+  if (!joinRes.ok) {
+    const msg = errMsg(joinRes.data).toLowerCase();
+    const ok  = msg.includes('already joined') || msg.includes('already started');
+    if (!ok) {
+      if (msg.includes('full'))       { showAlert('lobby-alert', 'That game is full.'); return; }
+      if (joinRes.status === 404)     { showAlert('lobby-alert', 'Game not found.'); return; }
+      if (!msg.includes('already'))   { showAlert('lobby-alert', errMsg(joinRes.data)); return; }
+    }
+  }
+
+  stopLobbyPoll();
+  const gRes = await api(`/games/${gameId}`);
+  if (!gRes.ok) { showAlert('lobby-alert', 'Could not load game.'); return; }
+
+  activeGameId = gameId;
+  gameState    = gRes.data;
+
+  if (gRes.data.status === 'waiting_setup') {
+    const placed = (myShips[gameId] || []).length > 0;
+    placed ? showGameView(gameId, gRes.data) : showSetupView(gameId, gRes.data);
+  } else {
+    showGameView(gameId, gRes.data);
+  }
+}
+
+async function viewGame(gameId) {
+  stopLobbyPoll();
+  const res = await api(`/games/${gameId}`);
+  if (!res.ok) { showAlert('lobby-alert', 'Could not load game.'); return; }
+  activeGameId = gameId;
+  gameState    = res.data;
+  showGameView(gameId, res.data);
+}
+
+// =============================================================
+//  SETUP (ship placement)
+// =============================================================
+function showSetupView(gameId, game) {
+  setupSize    = game.grid_size;
+  placements   = [];
+  activeGameId = gameId;
+  document.getElementById('setup-gid').textContent = gameId;
+  showView('v-setup');
+  hideAlert('setup-alert');
+
+  const ps = game.players || [];
+  document.getElementById('setup-info').innerHTML = `
+    <div class="mb-8"><strong>Grid:</strong> ${game.grid_size}×${game.grid_size}</div>
+    <div class="mb-8"><strong>Max Players:</strong> ${game.max_players}</div>
+    <div class="mb-8"><strong>Joined:</strong> ${ps.length} / ${game.max_players}</div>
+    <div class="text-muted" style="margin-top:10px">All players must place ships before the game starts.</div>
+  `;
+
+  buildSetupGrid();
+  updateDots();
+}
+
+function buildSetupGrid() {
+  const wrap = document.getElementById('setup-grid');
+  wrap.innerHTML = makeGridHTML(setupSize, [], [], true);
+  wrap.querySelectorAll('.cell').forEach(c => {
+    c.addEventListener('click', () => togglePlacement(+c.dataset.r, +c.dataset.c));
+  });
+}
+
+function togglePlacement(r, c) {
+  const idx = placements.findIndex(s => s.row === r && s.col === c);
+  if (idx >= 0) {
+    placements.splice(idx, 1);
+  } else if (placements.length < 3) {
+    placements.push({ row: r, col: c });
+  }
+  // re-render cells
+  document.querySelectorAll('#setup-grid .cell').forEach(c => {
+    const cr = +c.dataset.r, cc = +c.dataset.c;
+    const sel = placements.some(s => s.row === cr && s.col === cc);
+    c.className = 'cell ' + (sel ? 'selected' : 'empty');
+    c.textContent = sel ? '🚢' : '';
+  });
+  updateDots();
+}
+
+function updateDots() {
+  const n = placements.length;
+  for (let i = 0; i < 3; i++) {
+    document.getElementById('pd'+i).className = 'pdot' + (i < n ? ' placed' : '');
+  }
+  document.getElementById('pd-label').textContent = `${n} / 3 placed`;
+  document.getElementById('confirm-btn').disabled = n !== 3;
+}
+
+async function confirmPlacement() {
+  if (placements.length !== 3) return;
+  hideAlert('setup-alert');
+  const btn = document.getElementById('confirm-btn');
+  btn.disabled = true; btn.textContent = 'Placing…';
+
+  const res = await api(`/games/${activeGameId}/place`, {
+    method: 'POST',
+    body: JSON.stringify({ player_id: me.player_id, ships: placements })
+  });
+
+  if (res.ok) {
+    myShips[activeGameId] = [...placements];
+    try { localStorage.setItem('bs_ships', JSON.stringify(myShips)); } catch(e){}
+
+    const gRes = await api(`/games/${activeGameId}`);
+    if (gRes.ok && gRes.data.status === 'playing') {
+      showGameView(activeGameId, gRes.data);
+    } else {
+      showAlert('setup-alert', '⏳ Ships placed! Waiting for other players…', 'info');
+      btn.textContent = 'Waiting for others…';
+      startSetupWait();
+    }
+  } else {
+    btn.disabled = false; btn.textContent = 'Confirm Placement';
+    showAlert('setup-alert', errMsg(res.data));
+  }
+}
+
+function startSetupWait() {
+  stopPoll();
+  pollTimer = setInterval(async () => {
+    const r = await api(`/games/${activeGameId}`);
+    if (r.ok && r.data.status === 'playing') {
+      stopPoll();
+      showGameView(activeGameId, r.data);
+    }
+  }, 3000);
+}
+
+// =============================================================
+//  GAME VIEW
+// =============================================================
+async function showGameView(gameId, game) {
+  activeGameId = gameId;
+  gameState    = game;
+  // Restore stored ships
+  try { const s = localStorage.getItem('bs_ships'); if (s) myShips = JSON.parse(s); } catch(e){}
+  showView('v-game');
+  await renderGame(game);
+  if (game.status !== 'finished') startPoll(gameId);
+}
+
+function startPoll(gameId) {
+  stopPoll();
+  pollTimer = setInterval(async () => {
+    const r = await api(`/games/${gameId}`);
+    if (!r.ok) return;
+    flashSpin('game-spin');
+    gameState = r.data;
+    await renderGame(r.data);
+    if (r.data.status === 'finished') stopPoll();
+  }, 3000);
+}
+function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+async function renderGame(g) {
+  document.getElementById('game-title').textContent = `Game #${g.game_id}`;
+
+  // Winner
+  const wc = document.getElementById('winner-card');
+  if (g.status === 'finished' && g.winner_id) {
+    wc.style.display = 'block';
+    const wname = playerName(g.winner_id, g.players);
+    const isme  = g.winner_id === me?.player_id;
+    document.getElementById('winner-h').textContent   = isme ? '🏆 You Win!' : `🏆 ${wname} Wins!`;
+    document.getElementById('winner-sub').textContent = isme ? 'You sank all enemy ships. Well played!' : 'Better luck next time.';
+  } else {
+    wc.style.display = 'none';
+  }
+
+  // Turn banner
+  const isMyTurn = g.current_turn_player_id === me?.player_id && g.status === 'playing';
+  const tb = document.getElementById('turn-banner');
+  if (g.status === 'finished') {
+    tb.className = 'turn-banner'; document.getElementById('turn-text').textContent = 'Game over.';
+  } else if (g.status === 'waiting_setup') {
+    tb.className = 'turn-banner waiting'; document.getElementById('turn-text').textContent = 'Waiting for all players to place ships…';
+  } else if (isMyTurn) {
+    tb.className = 'turn-banner my-turn'; document.getElementById('turn-text').textContent = '🎯 Your turn — click a cell to fire!';
+  } else {
+    const tname = playerName(g.current_turn_player_id, g.players);
+    tb.className = 'turn-banner waiting'; document.getElementById('turn-text').textContent = `Waiting for ${tname} to fire…`;
+  }
+
+  // Player chips
+  document.getElementById('player-chips').innerHTML = (g.players || []).map(p => {
+    const active = p.player_id === g.current_turn_player_id && g.status === 'playing';
+    const dead   = p.ships_remaining === 0 && g.status !== 'waiting_setup';
+    const isme   = p.player_id === me?.player_id;
+    return `<div class="chip ${active?'active':''} ${dead?'dead':''}">
+      ${isme?'👤 ':''}${p.username}<span class="chip-ships">${p.ships_remaining}⚓</span>
+    </div>`;
+  }).join('');
+
+  // Fetch moves
+  const mRes = await api(`/games/${g.game_id}/moves`);
+  const moves = mRes.ok ? (mRes.data.moves || []) : [];
+
+  // Board
+  const ships  = myShips[g.game_id] || [];
+  const canFire = isMyTurn;
+  document.getElementById('board-sub').textContent = canFire
+    ? 'Click any unfired cell to fire your shot.'
+    : g.status === 'waiting_setup' ? 'Your ships are shown in green.' : 'Watching — not your turn.';
+
+  document.getElementById('game-grid').innerHTML = makeGridHTML(g.grid_size, ships, moves, false, canFire);
+
+  if (canFire) {
+    document.querySelectorAll('#game-grid .cell.fireable').forEach(c => {
+      c.addEventListener('click', () => fire(g.game_id, +c.dataset.r, +c.dataset.c));
+    });
+  }
+
+  // Move log
+  renderMoveLog(moves, g.players || []);
+  renderPlayersDetail(g.players || [], g);
+}
+
+// =============================================================
+//  GRID
+// =============================================================
+function makeGridHTML(size, ships, moves, forSetup, canFire=false) {
+  const cols = Array.from({length: size}, (_, i) => String.fromCharCode(65+i));
+
+  // build lookup maps
+  const shipSet  = new Set(ships.map(s => `${s.row},${s.col}`));
+  const moveMap  = {};
+  moves.forEach(m => { moveMap[`${m.row},${m.col}`] = m.result; });
+
+  let h = '<div class="grid-wrap">';
+  h += '<div class="col-labels">' + cols.map(c => `<div class="col-label">${c}</div>`).join('') + '</div>';
+
+  for (let r = 0; r < size; r++) {
+    h += `<div class="grid-row"><div class="row-label">${r+1}</div>`;
+    for (let c = 0; c < size; c++) {
+      const key  = `${r},${c}`;
+      const shot = moveMap[key];
+      const mine = shipSet.has(key);
+
+      let cls = 'cell ', icon = '';
+      if (forSetup) {
+        cls += 'empty';
+      } else if (shot === 'hit') {
+        cls += 'hit'; icon = '💥';
+      } else if (shot === 'miss') {
+        cls += 'miss'; icon = '•';
+      } else if (mine) {
+        cls += 'ship'; icon = '🚢';
+      } else {
+        cls += 'empty';
+        if (canFire) cls += ' fireable';
+      }
+
+      h += `<div class="${cls}" data-r="${r}" data-c="${c}">${icon}</div>`;
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+// =============================================================
+//  FIRE
+// =============================================================
+async function fire(gameId, row, col) {
+  hideAlert('game-alert');
+
+  const res = await api(`/games/${gameId}/fire`, {
+    method: 'POST',
+    body: JSON.stringify({ player_id: me.player_id, row, col })
+  });
+
+  if (res.ok) {
+    const result = res.data.result;
+    // Animate immediately
+    const cell = document.querySelector(`#game-grid .cell[data-r="${row}"][data-c="${col}"]`);
+    if (cell) {
+      cell.className = `cell ${result} pop`;
+      cell.textContent = result === 'hit' ? '💥' : '•';
+    }
+    // Refresh game
+    const gRes = await api(`/games/${gameId}`);
+    if (gRes.ok) { gameState = gRes.data; await renderGame(gRes.data); }
+  } else {
+    const msg = errMsg(res.data).toLowerCase();
+    let friendly = errMsg(res.data);
+    if (msg.includes('not your turn') || msg.includes('forbidden')) friendly = "It's not your turn yet — wait for the other player.";
+    else if (msg.includes('already targeted') || msg.includes('already fired'))  friendly = "You've already fired at that cell. Pick a different one.";
+    else if (msg.includes('out of bounds'))   friendly = 'That cell is outside the grid.';
+    else if (msg.includes('not in this game')) friendly = "You're not a player in this game.";
+    else if (msg.includes('not in playing'))   friendly = 'The game is not in a playing state yet.';
+    showAlert('game-alert', friendly);
+    setTimeout(() => hideAlert('game-alert'), 5000);
+  }
+}
+
+// =============================================================
+//  MOVE LOG
+// =============================================================
+function renderMoveLog(moves, players) {
+  const el = document.getElementById('move-log');
+  if (!moves.length) { el.innerHTML = '<div class="text-muted text-sm">No moves yet.</div>'; return; }
+  el.innerHTML = [...moves].reverse().map(m => {
+    const pname = playerName(m.player_id, players);
+    const coord = String.fromCharCode(65 + m.col) + (m.row + 1);
+    const time  = new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    return `<div class="move-entry">
+      <span class="move-dot ${m.result}"></span>
+      <span><strong>${pname}</strong> → ${coord} <span class="${m.result==='hit'?'text-error':'text-muted'}">${m.result==='hit'?'HIT':'miss'}</span></span>
+      <span class="move-time">${time}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderPlayersDetail(players, g) {
+  document.getElementById('players-detail').innerHTML = players.map(p => {
+    const isme   = p.player_id === me?.player_id;
+    const active = p.player_id === g.current_turn_player_id && g.status === 'playing';
+    return `<div class="flex items-center justify-between" style="padding:8px 0;border-bottom:1px solid var(--border);font-size:.82rem">
+      <span>${isme?'👤 ':''}${p.username} ${active?'<span class="text-success" style="font-size:.72rem">● TURN</span>':''}</span>
+      <span class="text-muted">${p.ships_remaining}/3 ⚓</span>
+    </div>`;
+  }).join('') || '<div class="text-muted text-sm">No players.</div>';
+}
+
+// =============================================================
+//  STATS
+// =============================================================
+async function showStats() {
+  if (!me) return;
+  stopLobbyPoll();
+  showView('v-stats');
+  const res = await api(`/players/${me.player_id}/stats`);
+  if (!res.ok) { document.getElementById('stats-body').innerHTML = '<div class="text-muted">Could not load stats.</div>'; return; }
+  const s = res.data;
+  const acc = ((s.accuracy || 0) * 100).toFixed(1);
+  document.getElementById('stats-body').innerHTML = `
+    <h2 style="margin-bottom:20px;font-size:1.1rem">📊 ${me.username}</h2>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-num">${s.games_played ?? s.games ?? 0}</div><div class="stat-label">Games</div></div>
+      <div class="stat-box"><div class="stat-num text-success">${s.wins ?? 0}</div><div class="stat-label">Wins</div></div>
+      <div class="stat-box"><div class="stat-num text-error">${s.losses ?? 0}</div><div class="stat-label">Losses</div></div>
+      <div class="stat-box"><div class="stat-num">${s.total_shots ?? s.shots ?? 0}</div><div class="stat-label">Shots</div></div>
+      <div class="stat-box"><div class="stat-num">${s.total_hits ?? s.hits ?? 0}</div><div class="stat-label">Hits</div></div>
+      <div class="stat-box"><div class="stat-num text-warning">${acc}%</div><div class="stat-label">Accuracy</div></div>
+    </div>
+  `;
+}
+
+// =============================================================
+//  HELPERS
+// =============================================================
+function playerName(id, players) {
+  if (!id) return 'Unknown';
+  const p = (players || []).find(p => p.player_id === id);
+  return p ? p.username : `Player ${id}`;
+}
+
+// =============================================================
+//  BOOT
+// =============================================================
+(function init() {
+  // Restore ships
+  try { const s = localStorage.getItem('bs_ships'); if (s) myShips = JSON.parse(s); } catch(e){}
+  // Restore player
+  try {
+    const p = localStorage.getItem('bs_player');
+    if (p) { me = JSON.parse(p); updateHeader(); goLobby(); return; }
+  } catch(e){}
+  showView('v-register');
+})();
+</script>
+</body>
+</html>
