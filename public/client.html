@@ -909,10 +909,12 @@ async function renderGame(g, moves) {
 function makeGridHTML(size, ships, moves, forSetup, canFire=false, perspective='enemy') {
   const cols = Array.from({length: size}, (_, i) => String.fromCharCode(65+i));
   const shipSet = new Set((ships || []).map(s => `${s.row},${s.col}`));
-  const moveMap = {};
 
+  // 🔥 FIX: build move map properly
+  const moveMap = {};
   (moves || []).forEach(m => {
-    moveMap[`${m.row},${m.col}`] = m.result;
+    const key = `${m.row},${m.col}`;
+    moveMap[key] = m.result;
   });
 
   let h = '<div class="grid-wrap">';
@@ -976,7 +978,10 @@ async function fire(gameId, row, col) {
       await renderGame(game, moves);
 
       const cell = document.querySelector(`#game-grid .cell[data-r="${row}"][data-c="${col}"]`);
-      if (cell) cell.classList.add('pop');
+      if (cell) {
+        cell.classList.add('pop');
+        setTimeout(() => cell.classList.remove('pop'), 300);
+      }
     }
   } else {
     const msg = errMsg(res.data).toLowerCase();
@@ -1021,6 +1026,10 @@ function renderMoveLog(moves, players) {
     const pname = playerName(m.player_id, players);
     const coord = String.fromCharCode(65 + m.col) + (m.row + 1);
 
+    const time = m.created_at
+      ? new Date(m.created_at).toLocaleTimeString()
+      : '—';
+
     return `<div class="move-entry">
       <span class="move-dot ${m.result}"></span>
       <span><strong>${pname}</strong> → ${coord}
@@ -1028,7 +1037,7 @@ function renderMoveLog(moves, players) {
           ${m.result==='hit'?'HIT 💥':'MISS 🌊'}
         </span>
       </span>
-      <span class="move-time">${formatMoveTime(m.created_at)}</span>
+      <span class="move-time">${time}</span>
     </div>`;
   }).join('');
 }
