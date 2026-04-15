@@ -694,28 +694,43 @@ function startSetupWait() {
 // =============================================================
 //  GAME VIEW
 // =============================================================
+// Fetch game state + moves in parallel — always used together
+async function fetchGameAndMoves(gameId) {
+  const [gRes, mRes] = await Promise.all([
+    api(`/games/${gameId}`),
+    api(`/games/${gameId}/moves`)
+  ]);
+  const game  = gRes.ok  ? gRes.data              : null;
+  const moves = mRes.ok  ? (mRes.data.moves || []) : [];
+  return { game, moves };
+}
+
 async function showGameView(gameId, game) {
   activeGameId = gameId;
   gameState    = game;
   showView('v-game');
-  await renderGame(game);
+  // Fetch moves alongside the game data we already have
+  const mRes = await api(`/games/${gameId}/moves`);
+  const moves = mRes.ok ? (mRes.data.moves || []) : [];
+  await renderGame(game, moves);
   if (game.status !== 'finished') startPoll(gameId);
 }
 
 function startPoll(gameId) {
   stopPoll();
   pollTimer = setInterval(async () => {
-    const r = await api(`/games/${gameId}`);
-    if (!r.ok) return;
+    const { game, moves } = await fetchGameAndMoves(gameId);
+    if (!game) return;
     flashSpin('game-spin');
-    gameState = r.data;
-    await renderGame(r.data);
-    if (r.data.status === 'finished') stopPoll();
+    gameState = game;
+    await renderGame(game, moves);
+    if (game.status === 'finished') stopPoll();
   }, 3000);
 }
 function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-async function renderGame(g) {
+// moves is always passed in — never fetched internally
+async function renderGame(g, moves) {
   document.getElementById('game-title').textContent = `Game #${g.game_id}`;
 
   // Winner
@@ -754,12 +769,8 @@ async function renderGame(g) {
     </div>`;
   }).join('');
 
-  // Fetch moves
-  const mRes = await api(`/games/${g.game_id}/moves`);
-  const moves = mRes.ok ? (mRes.data.moves || []) : [];
-
-  // Board — fetch ship positions from server (cached in memory after first fetch)
-  const ships  = await fetchMyShips(g.game_id);
+  // Board — ship positions fetched from server (cached in memory after first fetch)
+  const ships   = await fetchMyShips(g.game_id);
   const canFire = isMyTurn;
   document.getElementById('board-sub').textContent = canFire
     ? 'Click any unfired cell to fire your shot.'
@@ -773,7 +784,7 @@ async function renderGame(g) {
     });
   }
 
-  // Move log
+  // Move log + players sidebar
   renderMoveLog(moves, g.players || []);
   renderPlayersDetail(g.players || [], g);
 }
@@ -833,16 +844,15 @@ async function fire(gameId, row, col) {
   });
 
   if (res.ok) {
-    const result = res.data.result;
-    // Animate immediately
-    const cell = document.querySelector(`#game-grid .cell[data-r="${row}"][data-c="${col}"]`);
-    if (cell) {
-      cell.className = `cell ${result} pop`;
-      cell.textContent = result === 'hit' ? '💥' : ''; // miss ✕ via CSS ::before
+    // Fetch updated game + moves together, then rebuild the grid with correct state
+    const { game, moves } = await fetchGameAndMoves(gameId);
+    if (game) {
+      gameState = game;
+      await renderGame(game, moves);
+      // Pop animation on the cell that was just fired
+      const cell = document.querySelector(`#game-grid .cell[data-r="${row}"][data-c="${col}"]`);
+      if (cell) cell.classList.add('pop');
     }
-    // Refresh game
-    const gRes = await api(`/games/${gameId}`);
-    if (gRes.ok) { gameState = gRes.data; await renderGame(gRes.data); }
   } else {
     const msg = errMsg(res.data).toLowerCase();
     let friendly = errMsg(res.data);
