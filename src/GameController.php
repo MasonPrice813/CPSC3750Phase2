@@ -456,28 +456,28 @@ class GameController
                 Response::error(403, 'forbidden', 'Not your turn.');
             }
 
-            //$hitStmt = $this->pdo->prepare('SELECT player_id FROM ships WHERE game_id = :game_id AND row_idx = :row AND col_idx = :col LIMIT 1');
-            //$hitStmt->execute([
-                //':game_id' => $gameId,
-                //':row' => $row,
-                //':col' => $col,
-            //]);
-
-            $hitStmt = $this->pdo->prepare(
-                'SELECT player_id FROM ships 
-                WHERE game_id = :game_id 
-                AND row_idx = :row 
-                AND col_idx = :col
-                AND player_id != :player_id
-                LIMIT 1'
-            );
-
+            $hitStmt = $this->pdo->prepare('SELECT player_id FROM ships WHERE game_id = :game_id AND row_idx = :row AND col_idx = :col LIMIT 1');
             $hitStmt->execute([
                 ':game_id' => $gameId,
                 ':row' => $row,
                 ':col' => $col,
-                ':player_id' => $playerId,
             ]);
+
+            //$hitStmt = $this->pdo->prepare(
+                //'SELECT player_id FROM ships 
+                //WHERE game_id = :game_id 
+                //AND row_idx = :row 
+                //AND col_idx = :col
+                //AND player_id != :player_id
+                //LIMIT 1'
+            //);
+
+            //$hitStmt->execute([
+                //':game_id' => $gameId,
+                //':row' => $row,
+                //':col' => $col,
+                //':player_id' => $playerId,
+            //]);
 
             $hitShipOwner = $hitStmt->fetchColumn();
             $result = $hitShipOwner !== false ? 'hit' : 'miss';

@@ -910,11 +910,22 @@ function makeGridHTML(size, ships, moves, forSetup, canFire=false, perspective='
   const cols = Array.from({length: size}, (_, i) => String.fromCharCode(65+i));
   const shipSet = new Set((ships || []).map(s => `${s.row},${s.col}`));
 
-  // 🔥 FIX: build move map properly
   const moveMap = {};
+
   (moves || []).forEach(m => {
     const key = `${m.row},${m.col}`;
-    moveMap[key] = m.result;
+
+    if (perspective === 'self') {
+      // 🔴 Show ONLY enemy shots on you
+      if (m.player_id !== me.player_id) {
+        moveMap[key] = m.result;
+      }
+    } else if (perspective === 'enemy') {
+      // 🔵 Show ONLY your shots
+      if (m.player_id === me.player_id) {
+        moveMap[key] = m.result;
+      }
+    }
   });
 
   let h = '<div class="grid-wrap">';
