@@ -911,18 +911,20 @@ function makeGridHTML(size, ships, moves, forSetup, canFire=false, perspective='
   const shipSet = new Set((ships || []).map(s => `${s.row},${s.col}`));
 
   const moveMap = {};
+  const myId = Number(me?.player_id);
 
   (moves || []).forEach(m => {
     const key = `${m.row},${m.col}`;
+    const shooterId = Number(m.player_id);
 
     if (perspective === 'self') {
-      // 🔴 Show ONLY enemy shots on you
-      if (m.player_id !== me.player_id) {
+      // show only opponent shots on your board
+      if (shooterId !== myId) {
         moveMap[key] = m.result;
       }
     } else if (perspective === 'enemy') {
-      // 🔵 Show ONLY your shots
-      if (m.player_id === me.player_id) {
+      // show only your shots on opponent boards
+      if (shooterId === myId) {
         moveMap[key] = m.result;
       }
     }
