@@ -21,6 +21,23 @@
   --warning:  #f4a261;
   --cell:     60px;
 }
+
+body.light {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface2: #e9eef5;
+  --border: #cbd5e1;
+  --accent: #0077b6;
+  --accent2: #0096c7;
+  --hit: #d90429;
+  --miss: #6c8ebf;
+  --ship: #40916c;
+  --text: #0f172a;
+  --muted: #64748b;
+  --success: #2a9d8f;
+  --warning: #e76f51;
+}
+
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
 a{color:var(--accent);text-decoration:none}
@@ -179,6 +196,7 @@ input:focus,select:focus{border-color:var(--accent)}
     <div class="header-actions">
       <button class="btn btn-sm btn-secondary" onclick="showApiSettings()">Server</button>
       <button class="btn btn-sm btn-secondary" onclick="logout()">Switch Player</button>
+      <button class="btn btn-sm btn-secondary" onclick="toggleTheme()">🌙</button>
     </div>
   </div>
 </header>
@@ -1100,11 +1118,36 @@ function playerName(id, players) {
   return p ? p.username : `Player ${id}`;
 }
 
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  updateThemeIcon();
+}
+
+function updateThemeIcon() {
+  const btn = document.querySelector('header button[onclick="toggleTheme()"]');
+  if (!btn) return;
+
+  if (document.body.classList.contains('light')) {
+    btn.textContent = '🌙';
+  } else {
+    btn.textContent = '☀️';
+  }
+}
+
 // =============================================================
 //  BOOT
 // =============================================================
 (function init() {
   loadApiSettings();
+
+  // LOAD THEME
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'light') {
+    document.body.classList.add('light');
+  }
+  updateThemeIcon();
+  
   try {
     const p = sessionStorage.getItem('bs_player');
     if (p) { me = JSON.parse(p); updateHeader(); goLobby(); return; }
